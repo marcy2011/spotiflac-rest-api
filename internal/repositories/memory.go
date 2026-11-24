@@ -62,7 +62,7 @@ func (r *InMemoryTaskRepository) Update(id string, fn func(*models.Task)) error 
 }
 
 func generateID() string {
-	b := make([]byte, 8)
+	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
