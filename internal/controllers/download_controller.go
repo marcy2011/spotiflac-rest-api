@@ -2,6 +2,10 @@ package controllers
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/capimichi/spotiflac-rest-api/internal/models"
 	"github.com/capimichi/spotiflac-rest-api/internal/repositories"
@@ -84,7 +88,7 @@ func (ctrl *DownloadController) DownloadSync(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "completed",
-		"files":  files,
+		"files":  baseNames(files),
 	})
 }
 
@@ -108,6 +112,7 @@ func (ctrl *DownloadController) GetStatus(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
+	task.DownloadedFiles = nil // Never expose server filesystem paths.
 	c.JSON(http.StatusOK, task)
 }
 
@@ -176,6 +181,14 @@ func (ctrl *DownloadController) StreamAudio(c *gin.Context) {
 	http.ServeContent(c.Writer, c.Request, filepath.Base(path), info.ModTime(), file)
 }
 
+func baseNames(files []string) []string {
+	result := make([]string, 0, len(files))
+	for _, file := range files {
+		result = append(result, filepath.Base(file))
+	}
+	return result
+}
+
 func setDefaults(req *models.DownloadRequest) {
 	if req.Service == "" {
 		req.Service = "qobuz"
@@ -187,9 +200,8 @@ func setDefaults(req *models.DownloadRequest) {
 			req.Quality = "LOSSLESS"
 		}
 	}
-	if req.OutputDir == "" {
-		req.OutputDir = "./downloads"
-	}
+	// Ignore caller-supplied paths; all output stays under the server-owned directory.
+	req.OutputDir = "./downloads"
 	if req.FilenameFormat == "" {
 		req.FilenameFormat = "{artist} - {title}"
 	}
