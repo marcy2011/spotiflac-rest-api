@@ -111,6 +111,71 @@ func (ctrl *DownloadController) GetStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+// StreamAudio serves only a completed task's FLAC file. ServeContent honors HTTP Range requests.
+func (ctrl *DownloadController) StreamAudio(c *gin.Context) {
+	id := c.Param("id")
+	task, exists, err := ctrl.repo.Get(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not read task"})
+		return
+	}
+	if !exists || task.Status != models.StatusCompleted {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+		return
+	}
+	index, err := strconv.Atoi(c.Param("index"))
+	if err != nil || index < 0 || index >= len(task.DownloadedFiles) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+		return
+	}
+
+	root, err := filepath.Abs("./downloads")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Audio unavailable"})
+		return
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+		return
+	}
+	path := task.DownloadedFiles[index]
+	if !filepath.IsAbs(path) {
+		path, err = filepath.Abs(path)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+			return
+		}
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+		return
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || !strings.EqualFold(filepath.Ext(path), ".flac") {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+		return
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Audio not found"})
+		return
+	}
+
+	c.Header("Content-Type", "audio/flac")
+	c.Header("Content-Disposition", "inline")
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Accept-Ranges", "bytes")
+	http.ServeContent(c.Writer, c.Request, filepath.Base(path), info.ModTime(), file)
+}
+
 func setDefaults(req *models.DownloadRequest) {
 	if req.Service == "" {
 		req.Service = "qobuz"
