@@ -20,13 +20,13 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	repo := repositories.NewInMemoryTaskRepository()
+	apiSecret := os.Getenv("API_SECRET")\n\tif apiSecret == "" {\n\t\tfmt.Fprintln(os.Stderr, "API_SECRET is required")\n\t\tos.Exit(1)\n\t}\n\tallowedOrigin := os.Getenv("RENA_TUNES_ORIGIN")\n\n\trepo := repositories.NewInMemoryTaskRepository()
 	svc := services.NewDownloadService(repo)
 
 	healthCtrl := controllers.NewHealthController()
 	downloadCtrl := controllers.NewDownloadController(svc, repo)
 
-	r := controllers.SetupRouter(healthCtrl, downloadCtrl)
+	r := controllers.SetupRouter(healthCtrl, downloadCtrl, apiSecret, allowedOrigin)
 
 	port := os.Getenv("PORT")
 	if port == "" {
